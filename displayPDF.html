@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html>
+<body>
+
+<input type="file" id="myFile" accept=".pdf" style="margin-left: 25%;">
+<button id="submit" style="float: right;">Submit</button>
+<button id="reset" style="float: right;">Reset</button>
+
+<div style="width: 80%; height: 100vh; overflow: auto; float: left;">
+    <embed id="pdfDisplay" type="application/pdf" width="100%" height="100%">
+</div>
+
+<div style="width: 20%; height: 100vh; overflow: auto; float: right;">
+    <div id="componentContainer"></div>
+</div>
+<script>
+document.getElementById('myFile').addEventListener('change', function(event) {
+    var file = event.target.files[0];
+    if (file.type == "application/pdf") {
+        var reader = new FileReader();
+        reader.onload = function(e) {
+            document.getElementById('pdfDisplay').src = e.target.result;
+            // Hide the file input after a file is selected
+            document.getElementById('myFile').style.display = 'none';
+        };
+        reader.readAsDataURL(file);
+    } else {
+        alert("Please upload a PDF file.");
+    }
+});
+
+var answers = JSON.parse(localStorage.getItem('answers')) || {};
+
+// Create 90 rows of components
+for (var i = 0; i < 90; i++) {
+    var row = document.createElement('div');
+    row.style.marginBottom = '10px';
+
+    // Add question number
+    var questionNumber = document.createElement('span');
+    questionNumber.textContent = 'Question ' + (i + 1) + ': ';
+    row.appendChild(questionNumber);
+
+    // Create 4 circular toggle buttons
+    var buttons = [];
+    for (var j = 1; j <= 4; j++) {
+        var button = document.createElement('button');
+        button.textContent = j;
+        button.style.borderRadius = '50%';
+        button.style.width = '30px';
+        button.style.height = '30px';
+        button.addEventListener('click', function(event) {
+            var buttons = event.target.parentNode.querySelectorAll('button');
+            buttons.forEach(function(button) {
+                if (button !== event.target) {
+                    button.style.backgroundColor = '';
+                }
+            });
+            event.target.style.backgroundColor = event.target.style.backgroundColor === 'green' ? '' : 'green';
+
+            // Store the selected button in the dictionary
+            var questionNumber = parseInt(event.target.parentNode.querySelector('span').textContent.split(' ')[1]);
+            if (event.target.style.backgroundColor === 'green') {
+                answers[questionNumber] = parseInt(event.target.textContent);
+            } else {
+                delete answers[questionNumber];
+            }
+            localStorage.setItem('answers', JSON.stringify(answers));
+            console.log(answers);
+        });
+        buttons.push(button);
+        row.appendChild(button);
+    }
+
+    // Create a numeric input box
+    var input = document.createElement('input');
+    input.type = 'number';
+    input.style.width = '50px';
+    input.addEventListener('input', function(event) {
+        var buttons = event.target.parentNode.querySelectorAll('button');
+        buttons.forEach(function(button) {
+            button.style.backgroundColor = '';
+        });
+
+        // Store the input value in the dictionary
+        var questionNumber = parseInt(event.target.parentNode.querySelector('span').textContent.split(' ')[1]);
+        if (event.target.value) {
+            answers[questionNumber] = parseInt(event.target.value);
+        } else {
+            delete answers[questionNumber];
+        }
+        localStorage.setItem('answers', JSON.stringify(answers));
+        console.log(answers);
+    });
+    row.appendChild(input);
+
+    // Map the values from local storage to the elements
+    var answer = answers[i + 1];
+    if (answer !== undefined) {
+        if (answer >= 1 && answer <= 4) {
+            buttons[answer - 1].style.backgroundColor = 'green';
+        } else {
+            input.value = answer;
+        }
+    }
+
+    document.getElementById('componentContainer').appendChild(row);
+}
+
+// Add event listener to the submit button
+document.getElementById('submit').addEventListener('click', function() {
+    // Open a pop-up text box to input the answer key
+    var answerKey = prompt("Please enter the answer key:");
+
+    // Run the convertTexttoJson function
+    if (answerKey !== null) {
+        var ans = convertTexttoJson(answerKey);
+        var result = countMatchesAndNonMatches(answers, ans);
+
+        // Calculate the questions left unanswered
+        var questionsLeft = [];
+        for (var i = 1; i <= 90; i++) {
+            if (!answers.hasOwnProperty(i)) {
+                questionsLeft.push(i);
+            }
+        }
+
+        // Calculate the total score
+        var totalScore = result.matches * 4 - result.nonMatches;
+
+        var wrongAnsText = "";
+
+        for (var key in result.wrongAnswers){
+            // wrongAnsText += key + "<br />"
+            wrongAnsText += "Question:" + result.wrongAnswers[key].question + ": Correct Answer: " + result.wrongAnswers[key].correctAnswer + ' , Marked Answer: ' + result.wrongAnswers[key].markedAnswer+ "<br />";
+        }
+
+        // Prepare the results
+        var resultsText = "<h1 style='text-align: center;'><strong>Total Score: " + totalScore + "</strong></h1><br>" +
+                          "Matches: " + result.matches + "<br>" +
+                          "Non-matches: " + result.nonMatches + "<br>" +
+                          "Questions left: " + questionsLeft.length + "<br>" +
+                          "Details of wrong answers: <br>" + wrongAnsText+ "<br>" +
+                          "Questions left unanswered: <br>" + JSON.stringify(questionsLeft, null, 2);
+
+        // Open a new window to display the results
+        var resultsWindow = window.open("", "Results", "width=500,height=500");
+        console.log(resultsText)
+        resultsWindow.document.write(resultsText);
+
+        // Create a button to download the results
+        var downloadButton = resultsWindow.document.createElement('button');
+        downloadButton.textContent = 'Download Results';
+        downloadButton.addEventListener('click', function() {
+            // Generate a downloadable JSON file with the results
+            var dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(result));
+            var downloadAnchorNode = resultsWindow.document.createElement('a');
+            downloadAnchorNode.setAttribute("href",     dataStr);
+            downloadAnchorNode.setAttribute("download", "results.json");
+            resultsWindow.document.body.appendChild(downloadAnchorNode); // required for firefox
+            downloadAnchorNode.click();
+            downloadAnchorNode.remove();
+        });
+        resultsWindow.document.body.appendChild(downloadButton);
+    }
+});
+var resetButton = document.getElementById('reset');
+resetButton.addEventListener('click', function() {
+    // Clear the answers
+    answers = {};
+    localStorage.removeItem('answers');
+});
+function countMatchesAndNonMatches(answers, answerKey) {
+    var matches = 0;
+    var nonMatches = 0;
+    var wrongAnswers = [];
+
+    for (var key in answers) {
+        key = parseInt(key)
+        if (answers[key] === answerKey[key]) {
+            matches++;
+        } else {
+            nonMatches++;
+            wrongAnswers.push({ question: key, correctAnswer: answerKey[key], markedAnswer: answers[key] });
+        }
+    }
+
+    return { matches: matches, nonMatches: nonMatches, wrongAnswers: wrongAnswers };
+}
+
+function convertTexttoJson(txt) {
+    var sep = txt.replace(/\n/g,'').replace(/\r/g,'').split(" ");
+    var ans = {};
+    for (var i = 0; i < sep.length - 1; i += 2) {
+        var key = parseInt(sep[i].slice(0, -1));
+        var val = parseInt(sep[i + 1]);
+        ans[key] = val;
+    }
+    return ans;
+}
+
+</script>
+</body>
+</html>
